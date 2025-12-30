@@ -2,258 +2,212 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from datetime import datetime
 import json
 import warnings
 from tsfresh import extract_features
 from tsfresh.feature_extraction import EfficientFCParameters
 
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
 
-# ------------------ COMPONENT A: File Upload ------------------ #
+# =====================================================
+# MILESTONE 1 : DATA UPLOAD + VALIDATION + PREPROCESSING
+# =====================================================
+
 class FitnessDataUploader:
-    def __init__(self):
-        self.supported_formats = ['.csv', '.json']
-        self.required_columns = {
-            'heart_rate': ['timestamp', 'heart_rate'],
-            'sleep': ['timestamp', 'sleep_stage', 'duration_minutes'],
-            'steps': ['timestamp', 'step_count']
-        }
+    REQUIRED_COLUMNS = {
+        "heart_rate": ["timestamp", "heart_rate"],
+        "sleep": ["timestamp", "duration_minutes"],
+        "steps": ["timestamp", "step_count"]
+    }
 
-    def upload_files(self):
-        st.header("📁 Upload Fitness Tracker Data")
-        uploaded_files = st.file_uploader(
-            "Choose CSV or JSON files",
-            type=['csv', 'json'],
+    def upload(self):
+        st.header("📁 Upload Fitness Data")
+        files = st.file_uploader(
+            "Upload CSV / JSON files",
+            type=["csv", "json"],
             accept_multiple_files=True
         )
-        data_dict = {}
-        if uploaded_files:
-            for f in uploaded_files:
-                try:
-                    data_type = self._detect_data_type(f.name)
-                    if f.name.endswith('.csv'):
-                        df = pd.read_csv(f)
-                    else:
-                        df = self._load_json(f)
-                    if self._validate(df, data_type):
-                        data_dict[data_type] = df
-                        st.success(f"✅ {data_type} data loaded ({len(df)} records)")
-                    else:
-                        st.error(f"❌ Invalid structure in {f.name}")
-                except Exception as e:
-                    st.error(f"❌ Error loading {f.name}: {e}")
-        return data_dict
 
-    def _detect_data_type(self, filename):
-        fname = filename.lower()
-        if 'heart' in fname or 'hr' in fname:
-            return 'heart_rate'
-        elif 'sleep' in fname:
-            return 'sleep'
-        elif 'step' in fname or 'activity' in fname:
-            return 'steps'
-        else:
-            return 'unknown'
+        data = {}
+        if files:
+            for file in files:
+                df = self._read_file(file)
+                data_type = self._detect_type(file.name)
 
-    def _load_json(self, f):
-        data = json.load(f)
-        if isinstance(data, list):
-            return pd.DataFrame(data)
-        elif isinstance(data, dict) and 'data' in data:
-            return pd.DataFrame(data['data'])
+                if data_type in self.REQUIRED_COLUMNS and self._validate(df, data_type):
+                    data[data_type] = df
+                    st.success(f"✅ {data_type} data loaded ({len(df)} rows)")
+                else:
+                    st.error(f"❌ Invalid structure in {file.name}")
+        return data
+
+    def _read_file(self, file):
+        if file.name.endswith(".csv"):
+            return pd.read_csv(file)
         else:
-            return pd.DataFrame([data])
+            return pd.DataFrame(json.load(file))
+
+    def _detect_type(self, filename):
+        name = filename.lower()
+        if "heart" in name:
+            return "heart_rate"
+        if "sleep" in name:
+            return "sleep"
+        if "step" in name:
+            return "steps"
+        return "unknown"
 
     def _validate(self, df, data_type):
-        if data_type not in self.required_columns:
-            return False
-        df_cols = [c.lower() for c in df.columns]
-        for col in self.required_columns[data_type]:
-            if col.lower() not in df_cols:
+        df.columns = df.columns.str.lower()
+        for col in self.REQUIRED_COLUMNS[data_type]:
+            if col not in df.columns:
                 st.warning(f"Missing column: {col}")
                 return False
         return True
 
-# ------------------ COMPONENT B: Validation ------------------ #
-class FitnessDataValidator:
-    def __init__(self):
-        self.rules = {
-            'heart_rate': (30, 220),
-            'step_count': (0, 100000),
-            'duration_minutes': (0, 1440)
-        }
 
-    def clean_data(self, df, data_type):
-        df = df.rename(columns=lambda x: x.lower().replace(' ', '_'))
-        if 'timestamp' in df.columns:
-            df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-        for col, (low, high) in self.rules.items():
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-                df[col] = df[col].clip(lower=low, upper=high)
-        df = df.dropna(subset=['timestamp'])
-        return df
+class FitnessPreprocessor:
+    def clean_and_align(self, df, data_type, freq):
+        df = df.copy()
+        df.columns = df.columns.str.lower()
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        df = df.dropna(subset=["timestamp"])
+        df = df.set_index("timestamp").sort_index()
 
-# ------------------ COMPONENT C: Time Alignment ------------------ #
-class TimeAligner:
-    freq_map = {'1min':'1T', '5min':'5T', '15min':'15T', '30min':'30T', '1hour':'1H'}
+        # keep ONLY numeric columns for resampling
+        numeric_cols = df.select_dtypes(include=np.number)
 
-    def align(self, df, data_type, target_freq='1min'):
-        if 'timestamp' not in df.columns:
-            return df
-        df = df.set_index('timestamp').sort_index()
-        freq_str = self.freq_map.get(target_freq, '1T')
-        if data_type == 'heart_rate':
-            df_resampled = df.resample(freq_str).mean()
-        elif data_type == 'steps' or data_type=='duration_minutes':
-            df_resampled = df.resample(freq_str).sum()
-        elif data_type == 'sleep':
-            df_resampled = df.resample(freq_str).agg(lambda x: x.mode().iloc[0] if len(x.mode())>0 else np.nan)
-        df_resampled = df_resampled.interpolate(method='linear').fillna(method='bfill').fillna(method='ffill')
-        df_resampled = df_resampled.reset_index()
+        if data_type == "heart_rate":
+            df_resampled = numeric_cols.resample(freq).mean()
+        else:
+            df_resampled = numeric_cols.resample(freq).sum()
+
+        df_resampled = df_resampled.interpolate().ffill().bfill()
+        df_resampled.reset_index(inplace=True)
         return df_resampled
 
-# ------------------ MILESTONE 2: Feature Extraction & Forecast ------------------ #
+
+# =====================================================
+# MILESTONE 2 : FEATURE EXTRACTION + FORECASTING
+# =====================================================
+
 class FeatureForecaster:
-    def extract_features(self, df, data_type):
-        df_ff = df.copy()
-        df_ff = df_ff.rename(columns=lambda x: x.lower().replace(' ', '_'))
-        if 'timestamp' not in df_ff.columns:
-            st.warning(f"No timestamp column for {data_type}")
-            return None
-        # Create ID column for TSFresh (required)
-        df_ff['id'] = 1
-        numeric_cols = df_ff.select_dtypes(include=np.number).columns.tolist()
-        features_dict = {}
+    def extract_features(self, df):
+        df = df.copy()
+        df["id"] = 1
+
+        numeric_cols = df.select_dtypes(include=np.number).columns
+        features = {}
+
         for col in numeric_cols:
-            if col in ['id']: 
+            if col == "id":
                 continue
-            try:
-                extracted = extract_features(
-                    df_ff[['id','timestamp', col]].rename(columns={col:'value', 'timestamp':'time'}),
-                    column_id='id', column_sort='time',
-                    default_fc_parameters=EfficientFCParameters()
-                )
-                features_dict[col] = extracted
-                st.success(f"✅ Features extracted for {col} in {data_type}")
-            except Exception as e:
-                st.error(f"❌ Error extracting features for {col}: {e}")
-        return features_dict
 
-    def forecast_data(self, df, data_type):
-        # Placeholder simple forecast: next 5 values using rolling mean
-        numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-        forecast_dict = {}
+            temp = df[["id", "timestamp", col]].rename(
+                columns={"timestamp": "time", col: "value"}
+            )
+
+            temp["value"] = temp["value"].ffill().bfill()
+
+            extracted = extract_features(
+                temp,
+                column_id="id",
+                column_sort="time",
+                default_fc_parameters=EfficientFCParameters(),
+                disable_progressbar=True
+            )
+
+            features[col] = extracted
+            st.success(f"✅ Features extracted for {col}")
+
+        return features
+
+    def forecast(self, df):
+        forecast_results = {}
+        numeric_cols = df.select_dtypes(include=np.number).columns
+
         for col in numeric_cols:
-            series = df[col].fillna(method='ffill')
-            last_mean = series.rolling(5, min_periods=1).mean().iloc[-1]
-            forecast = [last_mean]*5
-            forecast_dict[col] = forecast
-            st.info(f"Forecast (next 5 points) for {col} in {data_type}: {forecast}")
-        return forecast_dict
+            last_mean = df[col].tail(5).mean()
+            forecast_results[col] = [round(last_mean, 2)] * 5
+            st.info(f"Forecast for {col}: {forecast_results[col]}")
 
-# ------------------ COMPLETE PIPELINE ------------------ #
-class FitnessPreprocessor:
-    def __init__(self):
-        self.uploader = FitnessDataUploader()
-        self.validator = FitnessDataValidator()
-        self.aligner = TimeAligner()
-        self.processed_data = {}
+        return forecast_results
 
-    def run_pipeline(self, uploaded_files=None, target_freq='1min'):
-        if uploaded_files is None:
-            raw_data = self.uploader.upload_files()
-        else:
-            raw_data = uploaded_files
 
-        if not raw_data:
-            st.error("❌ No data uploaded!")
-            return
+# =====================================================
+# MILESTONE 3 : ANOMALY DETECTION
+# =====================================================
 
-        for dt, df in raw_data.items():
-            cleaned = self.validator.clean_data(df, dt)
-            aligned = self.aligner.align(cleaned, dt, target_freq)
-            self.processed_data[dt] = aligned
+class AnomalyDetector:
+    def detect(self, df):
+        anomalies = {}
+        numeric_cols = df.select_dtypes(include=np.number).columns
 
-        st.success("✅ Pipeline Completed!")
-        return self.processed_data
+        for col in numeric_cols:
+            mean = df[col].mean()
+            std = df[col].std()
+            threshold_high = mean + 2 * std
+            threshold_low = mean - 2 * std
 
-    def preview_data(self):
-        if not self.processed_data:
-            st.warning("No processed data available!")
-            return
-        st.header("📊 Processed Data Preview")
-        for dt, df in self.processed_data.items():
-            st.subheader(f"{dt.title()} Data Sample")
-            st.dataframe(df.head(20), use_container_width=True)
-            numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-            if numeric_cols:
-                col_left, col_right = st.columns(2)
-                with col_left:
-                    for num_col in numeric_cols:
-                        st.metric(
-                            label=f"{num_col.replace('_',' ').title()} Mean",
-                            value=f"{df[num_col].mean():.1f}"
-                        )
-                with col_right:
-                    for num_col in numeric_cols:
-                        st.metric(
-                            label=f"{num_col.replace('_',' ').title()} Max",
-                            value=f"{df[num_col].max():.1f}"
-                        )
-            self.plot_data(df, numeric_cols, dt)
+            anomaly_points = df[
+                (df[col] > threshold_high) | (df[col] < threshold_low)
+            ]
 
-    def plot_data(self, df, numeric_cols, dt):
-        if not numeric_cols:
-            return
-        col_select = st.selectbox(f"Select metric to plot for {dt}:", numeric_cols, key=dt)
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=df['timestamp'], y=df[col_select],
-            mode='lines+markers', name=col_select
-        ))
-        st.plotly_chart(fig, use_container_width=True)
+            anomalies[col] = anomaly_points
+            st.warning(f"⚠️ {len(anomaly_points)} anomalies detected in {col}")
 
-# ------------------ STREAMLIT APP ------------------ #
+        return anomalies
+
+
+# =====================================================
+# STREAMLIT APP
+# =====================================================
+
 def main():
-    st.set_page_config(page_title="Fitness Data Preprocessor", layout="wide", page_icon="🏋️‍♀️")
-    st.title("🏋️‍♀️ Fitness Data Preprocessing & Forecasting Pipeline")
-    st.markdown("**Milestone 2: Feature Extraction & Forecasting**")
+    st.set_page_config(page_title="Fitness Analytics Pipeline", layout="wide")
+    st.title("🏋️ Fitness Data Analytics Pipeline")
+    st.markdown("### Milestone 1 + 2 + 3 Integrated")
 
-    # Initialize
+    uploader = FitnessDataUploader()
     preprocessor = FitnessPreprocessor()
-    pipeline = FeatureForecaster()
+    forecaster = FeatureForecaster()
+    detector = AnomalyDetector()
 
-    uploaded_files = preprocessor.uploader.upload_files()
-    
-    target_freq = st.sidebar.selectbox(
-        "Target Frequency:",
-        options=['1min', '5min', '15min', '30min', '1hour']
-    )
+    raw_data = uploader.upload()
+    freq = st.sidebar.selectbox("Resample Frequency", ["1min", "5min", "15min"])
 
-    # Run pipeline
     if st.button("🚀 Run Pipeline"):
-        processed = preprocessor.run_pipeline(uploaded_files, target_freq)
-        if processed:
-            preprocessor.preview_data()
-            st.session_state['processed_data'] = processed
+        processed_data = {}
 
-    # Extract Features & Forecast
-    if 'processed_data' in st.session_state:
-        processed_data = st.session_state['processed_data']
-        if st.button("⚡ Extract Features & Forecast"):
-            for dt, df in processed_data.items():
-                if df is None or df.empty:
-                    st.warning(f"No processed data available for {dt}")
-                    continue
-                st.subheader(f"🔹 {dt.title()} Feature Extraction & Forecast")
-                pipeline.extract_features(df, dt)
-                pipeline.forecast_data(df, dt)
-            st.success("✅ Feature Extraction & Forecast Completed!")
-    else:
-        st.info("ℹ️ Run the pipeline first to process the data.")
+        for dtype, df in raw_data.items():
+            st.subheader(f"📊 {dtype.upper()} PROCESSING")
+            processed = preprocessor.clean_and_align(df, dtype, freq)
+            processed_data[dtype] = processed
+
+            st.dataframe(processed.head())
+
+            # Plot
+            metric = processed.select_dtypes(include=np.number).columns[0]
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=processed["timestamp"],
+                y=processed[metric],
+                mode="lines+markers",
+                name=metric
+            ))
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Milestone 2
+            st.subheader("🔹 Feature Extraction & Forecast")
+            forecaster.extract_features(processed)
+            forecaster.forecast(processed)
+
+            # Milestone 3
+            st.subheader("🔹 Anomaly Detection")
+            detector.detect(processed)
+
+        st.success("✅ All Milestones Executed Successfully!")
+
 
 if __name__ == "__main__":
     main()
- 
