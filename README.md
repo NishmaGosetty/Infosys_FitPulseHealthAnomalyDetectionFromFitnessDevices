@@ -3,7 +3,7 @@
 FitPulse is an industry-oriented fitness data analytics pipeline designed to process time-series data from wearable fitness devices.  
 The system performs data ingestion, preprocessing, feature extraction, trend forecasting, and anomaly detection using multiple techniques.
 
-The project follows a modular, production-style architecture and is implemented as an interactive **Streamlit application** for real-time data analysis and visualization.
+The project follows a modular, production-style architecture and is implemented as an interactive **Streamlit application** featuring a unified dashboard for real-time data analysis, anomaly monitoring, and visualization.
 
 ---
 
@@ -15,6 +15,8 @@ The project follows a modular, production-style architecture and is implemented 
 - Trend forecasting using rolling statistics
 - Multi-method anomaly detection
 - Interactive visualizations and performance metrics
+- Unified Streamlit dashboard with user interactivity
+- Accessible and consistent UI design for better user experience
 
 ---
 
@@ -35,7 +37,16 @@ The project follows a modular, production-style architecture and is implemented 
 - Threshold-based anomaly detection  
 - Statistical anomaly detection using Z-score  
 - Trend deviation-based detection  
-- Reduction of false positives through multi-method validation  
+- Reduction of false positives through multi-method validation
+
+ ### Milestone 4 – Interactive Dashboard & Visualization
+- Development of a unified, interactive Streamlit dashboard  
+- Real-time visualization of trends, forecasts, and detected anomalies  
+- User-controlled filters and interactive components for data exploration  
+- Consistent color scheme, layout, and typography for professional presentation  
+- Accessibility-focused design ensuring clear text visibility and readable charts  
+- Performance metrics and summary insights for quick decision-making  
+
 
 ---
 
@@ -67,6 +78,12 @@ Using multiple anomaly detection techniques improves system reliability by:
 - TSFresh  
 
 ---
+
+## Dashboard Highlights
+- Clean and minimal UI with consistent styling  
+- Interactive charts for trends and anomalies  
+- Clear visual distinction between normal and anomalous data points  
+- Designed for usability, accessibility, and professional presentation  
 
 ## How to Run the Application
 
