@@ -88,5 +88,4 @@ Using multiple anomaly detection techniques improves system reliability by:
 ## How to Run the Application
 
 ```bash
-pip install -r requirements.txt
 streamlit run health_anomaly_detection_pipeline.py
