@@ -1,5 +1,9 @@
 # 🏃 FitPulse – Health Anomaly Detection System
 
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://fitpulse-health.streamlit.app)
+
+🚀 **Live Demo:** [https://fitpulse-health.streamlit.app](https://fitpulse-health.streamlit.app/)
+
 ## 🚀 Overview
 FitPulse is an end-to-end machine learning pipeline for analyzing fitness device data and detecting health anomalies.
 
