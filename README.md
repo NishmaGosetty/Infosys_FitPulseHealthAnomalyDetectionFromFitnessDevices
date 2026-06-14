@@ -1,6 +1,6 @@
 # 🏃 FitPulse – Health Anomaly Detection System
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://fitpulse-health.streamlit.app)
+[![Streamlit App](https://img.shields.io/badge/Streamlit-Live_App-FF4B4B?logo=streamlit&logoColor=white)](https://fitpulse-health.streamlit.app)
 
 🚀 **Live Demo:** [https://fitpulse-health.streamlit.app](https://fitpulse-health.streamlit.app/)
 
